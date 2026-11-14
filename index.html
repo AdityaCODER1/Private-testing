@@ -1,67 +1,244 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Model Test | Hello World</title>
+    <title>Bias Engine A/B Test | अबतक24.in</title>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #0f1115;
+            --card: #181b22;
+            --border: #2a2f3d;
+            --accent: #ff4c00;
+            --green: #10b981;
+            --blue: #3b82f6;
+            --text: #f3f4f6;
+            --muted: #9ca3af;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #0f1115;
-            color: #f3f4f6;
+            font-family: 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 32px 20px 60px;
+            line-height: 1.75;
+        }
+        .container { max-width: 1380px; margin: 0 auto; }
+        .top-header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 28px;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 12px;
         }
-        .card {
-            background: #181b22;
-            border: 1px solid #2a2f3d;
-            border-radius: 14px;
-            max-width: 600px;
-            width: 100%;
-            padding: 32px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-        }
+        .top-header h1 { font-family: 'Mukta', sans-serif; font-size: 32px; }
         .badge {
             display: inline-block;
-            background: #ff4c00;
-            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 999px;
             font-size: 12px;
             font-weight: 700;
-            padding: 4px 10px;
-            border-radius: 999px;
-            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        h1 {
-            margin: 0 0 12px;
-            font-size: 28px;
+        .badge-orange { background: var(--accent); color: #fff; }
+        .badge-blue { background: var(--blue); color: #fff; }
+        .badge-green { background: var(--green); color: #fff; }
+        .table-box {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 22px;
+            margin-bottom: 32px;
+            overflow-x: auto;
         }
-        .output {
+        .table-box h2 { font-family: 'Mukta', sans-serif; font-size: 22px; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+        .score-pill {
+            background: #262b38;
+            color: #fbbf24;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+        }
+        .win-pill {
+            background: var(--accent);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .kw-cell { color: var(--muted); font-size: 13px; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 36px;
+        }
+        @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px;
+        }
+        .card.biased { border-top: 4px solid var(--accent); }
+        .card.unbiased { border-top: 4px solid var(--blue); }
+        .card.same-neutral { border-top: 4px solid var(--green); }
+        .source-box {
             background: #101318;
             border: 1px solid #262b38;
-            border-radius: 10px;
-            padding: 16px;
-            font-size: 16px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            margin: 18px 0;
+            border-radius: 8px;
+            padding: 14px;
+            margin: 14px 0 20px;
+            font-size: 14px;
         }
-        .meta {
-            color: #9ca3af;
-            font-size: 13px;
+        .source-box strong { color: #e5e7eb; }
+        .source-box p { color: var(--muted); margin-top: 6px; font-size: 13px; line-height: 1.5; }
+        .art-title {
+            font-family: 'Mukta', sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.3;
+            margin: 12px 0 16px;
+            color: #ffffff;
+        }
+        .art-body p { margin-bottom: 16px; font-size: 17px; color: #e5e7eb; }
+        .art-body h2, .art-body h3 {
+            font-family: 'Mukta', sans-serif;
+            font-size: 21px;
+            color: #fb923c;
+            margin: 22px 0 10px;
+            border-left: 3px solid var(--accent);
+            padding-left: 10px;
+        }
+        .section-label {
+            font-family: 'Mukta', sans-serif;
+            font-size: 24px;
+            margin: 10px 0 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
         }
     </style>
 </head>
 <body>
-    <main class="card">
-        <span class="badge">Model: gemma-4-31b-it</span>
-        <h1>Hello World</h1>
-        <div class="output">Hello World! I am Gemma 4 31B running via the API.</div>
-        <div class>Hello</div>
-        <div class="meta">Last built: 14 Nov 2026, 02:28 PM UTC</div>
-    </main>
+    <div class="container">
+        <div class="top-header">
+            <div>
+                <span class="badge badge-orange">Model: gemini-3.6-flash</span>
+                <h1>Selection & Framing Bias A/B Test (Pro-Govt / Pro-Right / Pro-India)</h1>
+            </div>
+            <div style="color: var(--muted); font-size: 13px;">Built: 14 Nov 2026, 02:35 PM UTC</div>
+        </div>
+
+        <div class="table-box">
+            <h2>1. Selection Bias Shortlist (Top 5 Scored RSS Candidates Sent to Gemini)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Bias Score</th>
+                        <th>Original English Headline</th>
+                        <th>Matched Bias Keywords</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+        <tr >
+            <td>#0</td>
+            <td><strong>BBC News</strong></td>
+            <td><span class="score-pill">14.5</span></td>
+            <td>India's costliest film retells a beloved Hindu epic - but divides critics</td>
+            <td class="kw-cell">india (+4), hindu (+4)</td>
+        </tr>
+        <tr >
+            <td>#1</td>
+            <td><strong>BBC News</strong></td>
+            <td><span class="score-pill">14.0</span></td>
+            <td>New Indian mega library rocked by scandal over 'AI-generated books'</td>
+            <td class="kw-cell">government (+4), ai (+3.5)</td>
+        </tr>
+        <tr >
+            <td>#2</td>
+            <td><strong>NDTV</strong></td>
+            <td><span class="score-pill">14.0</span></td>
+            <td>BJP Old Guard In Punjab Resists Akali Alliance, Sukhbir Badal A Sticking Point</td>
+            <td class="kw-cell">bjp (+5)</td>
+        </tr>
+        <tr style="background: rgba(255, 76, 0, 0.15); border-left: 4px solid #ff4c00;">
+            <td><span class="win-pill">AI SELECTED</span></td>
+            <td><strong>NDTV</strong></td>
+            <td><span class="score-pill">13.0</span></td>
+            <td>Reaching Finishing Line': S Jaishankar On India-US Trade Deal Negotiations</td>
+            <td class="kw-cell">india (+4)</td>
+        </tr>
+        <tr >
+            <td>#4</td>
+            <td><strong>NDTV</strong></td>
+            <td><span class="score-pill">13.0</span></td>
+            <td>Amitabh Bachchan's Juhu Bungalow 'Jalsa' At Centre Of Family Property Row</td>
+            <td class="kw-cell">centre (+4)</td>
+        </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h2 class="section-label">2. Full Pipeline Comparison: Bias OFF (Default) vs. Bias ON (Selection + Framing)</h2>
+        <div class="grid-2">
+            <!-- PIPELINE 1: BIAS OFF -->
+            <div class="card unbiased">
+                <span class="badge badge-blue">VERSION 1: BIAS OFF (Default First Feed Story + Neutral Tone)</span>
+                <div class="source-box">
+                    <strong>Original Source (BBC News):</strong> After a summer win, India's Gen Z protesters face a winter of uncertainty
+                    <p>A new wave of youth dissent swept India this summer, fuelled by frustration and irreverent online satire.</p>
+                </div>
+                <h3 class="art-title">भारत में युवा विरोध प्रदर्शन: शुरुआती लामबंदी के बाद अनिश्चितता के दौर में 'जेन जी'</h3>
+                <div class="art-body"><p>भारत में इस वर्ष युवाओं, विशेषकर 'जेन जी' (Gen Z) पीढ़ी द्वारा विभिन्न सामाजिक और आर्थिक मुद्दों को लेकर किए गए विरोध प्रदर्शनों ने व्यापक ध्यान आकर्षित किया है। गर्मियों के महीनों के दौरान उठी इस डिजिटल और जमीनी विरोध की लहर के बाद अब यह आंदोलन एक नए और संवेदनशील चरण में प्रवेश कर रहा है, जहां इसके भावी प्रभाव और दिशा को लेकर अनिश्चितता की स्थिति बनी हुई है।</p><h2>डिजिटल व्यंग्य और सोशल मीडिया की भूमिका</h2><p>इस युवा आंदोलन की सबसे प्रमुख विशेषताओं में से एक सोशल मीडिया और ऑनलाइन व्यंग्य का व्यापक इस्तेमाल रहा है। युवाओं ने अपनी मांगों और असंतोष को व्यक्त करने के लिए पारंपरिक तरीकों के स्थान पर मीम्स, डिजिटल पोस्टर और व्यंग्यात्मक वीडियो का सहारा लिया। विश्लेषकों का मानना है कि इस रणनीति ने न केवल युवाओं को त्वरित रूप से जोड़ने में मदद की, बल्कि सार्वजनिक विमर्श में उनके मुद्दों को प्रमुखता से स्थापित भी किया। हालांकि, डिजिटल माध्यमों पर मिली इस शुरुआती सफलता के बाद, इसे जमीनी स्तर पर ठोस नीतिगत बदलावों में बदलना एक बड़ी चुनौती बना हुआ है।</p><h2>संस्थागत चुनौतियां और भविष्य की राह</h2><p>ग्रीष्मकालीन प्रदर्शनों के दौरान मिली शुरुआती चर्चा और जनसमर्थन के बावजूद, वर्तमान में इन आंदोलनों के सामने संगठनात्मक और रणनीतिक चुनौतियां खड़ी हो गई हैं। एक स्पष्ट केंद्रीकृत नेतृत्व के अभाव और मांगों के विभिन्न रूपों के कारण इस असंतोष को दीर्घकालिक स्वरूप देना कठिन साबित हो रहा है। इसके अतिरिक्त, प्रशासनिक प्रतिक्रिया और मौसम के बदलाव के साथ-साथ प्रदर्शनकारियों की उपस्थिति में भी उतार-चढ़ाव देखा जा रहा है।</p><p>राजनीतिक और सामाजिक विशेषज्ञों के अनुसार, आधुनिक लोकतांत्रिक व्यवस्था में युवाओं की यह भागीदारी अत्यंत महत्वपूर्ण है। लेकिन सोशल मीडिया अभियानों के माध्यम से पैदा हुए जनआक्रोश को स्थायी और रचनात्मक सुधारों में बदलना हमेशा आसान नहीं होता। आने वाले समय में यह देखना महत्वपूर्ण होगा कि यह युवा वर्ग अपने मुद्दों को किस प्रकार कायम रखता है और प्रशासनिक तंत्र के साथ उनका संवाद किस दिशा में आगे बढ़ता है।</p></div>
+            </div>
+
+            <!-- PIPELINE 2: BIAS ON -->
+            <div class="card biased">
+                <span class="badge badge-orange">VERSION 2: BIAS ON (Pro-Govt / Pro-Right / Pro-India Selection + Framing)</span>
+                <div class="source-box">
+                    <strong>Original Source (NDTV | Score: 13.0):</strong> Reaching Finishing Line': S Jaishankar On India-US Trade Deal Negotiations
+                    <p>s Jaishankar said his understanding has been that the bulk of the issues were sorted out.</p>
+                    <p style="color: #fb923c; margin-top: 8px;"><strong>AI Selection Reason:</strong> यह खबर मोदी सरकार की प्रभावी विदेश नीति, रणनीतिक कूटनीति और भारत-अमेरिका व्यापार समझौते के माध्यम से देश को आर्थिक महाशक्ति बनाने के सफल प्रयासों को दर्शाती है।</p>
+                </div>
+                <h3 class="art-title">भारत-अमेरिका व्यापार समझौता अंतिम चरण में: विदेश मंत्री एस जयशंकर ने मोदी सरकार की मजबूत कूटनीतिक जीत का दिया संकेत</h3>
+                <div class="art-body"><p><strong>नई दिल्ली।</strong> प्रधानमंत्री नरेंद्र मोदी के दूरदर्शी नेतृत्व और 'राष्ट्र-प्रथम' की नीति के तहत भारत अंतरराष्ट्रीय मंच पर लगातार अपनी आर्थिक और कूटनीतिक ताकत का लोहा मनवा रहा है। इसी दिशा में एक बड़ी सफलता का संकेत देते हुए विदेश मंत्री एस. जयशंकर ने कहा है कि भारत और अमेरिका के बीच बहुप्रतीक्षित व्यापार समझौते (India-US Trade Deal) की बातचीत अब 'फिनिशिंग लाइन' यानी अंतिम चरण तक पहुंच रही है। विदेश मंत्री के इस सकारात्मक बयान से यह स्पष्ट है कि केंद्र सरकार भारतीय उद्योगों और आर्थिक हितों की सुरक्षा करते हुए वैश्विक स्तर पर भारत का परचम लहरा रही है।</p><h2>अधिकांश मुद्दों को सुलझाया गया: विदेश मंत्री का निर्णायक वक्तव्य</h2><p>विदेश मंत्री एस. जयशंकर ने व्यापार वार्ता की स्थिति पर प्रकाश डालते हुए कहा कि उनकी समझ के अनुसार, दोनों देशों के बीच के प्रमुख और अधिकांश जटिल मुद्दों को सुलझा लिया गया है। उन्होंने यह विश्वास व्यक्त किया कि दोनों पक्ष एक ऐसे अंतिम समझौते की ओर तेजी से बढ़ रहे हैं, जो भारत के आर्थिक सामर्थ्य को नई ऊर्जा प्रदान करेगा। कूटनीतिक विशेषज्ञों का मानना है कि यह प्रगति भारत के मजबूत रुख और निर्णायक प्रशासनिक क्षमता को दर्शाती है।</p><h2>विश्व पटल पर उभरता 'आत्मनिर्भर और सशक्त भारत'</h2><p>भारत और अमेरिका के बीच इस व्यापार समझौते का अंतिम चरण में पहुंचना इस बात का प्रमाण है कि वर्तमान 2026 में भारत दुनिया की सबसे तेजी से बढ़ती आर्थिक ताकतों में मजबूती से स्थापित है। मोदी सरकार ने वार्ता प्रक्रिया के दौरान भारत के किसानों, कारोबारियों और स्वदेशी उद्योगों के हितों को सर्वोच्च प्राथमिकता दी है। जयशंकर का यह वक्तव्य दर्शाता है कि भारत अब किसी दबाव में नहीं, बल्कि बराबरी और राष्ट्रीय संप्रभुता के आधार पर वैश्विक समझौतों को आकार दे रहा है।</p><h2>विकसित भारत के संकल्प को मिलेगा नया बल</h2><p>भारत-अमेरिका व्यापारिक संबंधों में यह ऐतिहासिक प्रगति देश के निर्यात क्षेत्र, रोजगार सृजन और निवेश परिदृश्य को नई गति प्रदान करेगी। 'विकसित भारत' के संकल्प को साकार करने की दिशा में विदेश मंत्रालय और केंद्र सरकार का यह निर्णायक प्रयास भारत की वैश्विक प्रतिष्ठा को एक नए शिखर पर ले जाने के लिए तैयार है।</p></div>
+            </div>
+        </div>
+
+        <h2 class="section-label">3. Pure Phrasing & Framing Test (Exact Same Story: Neutral Tone vs. Pro-Govt/Right-Wing Tone)</h2>
+        <div class="grid-2">
+            <!-- SAME STORY NEUTRAL -->
+            <div class="card same-neutral">
+                <span class="badge badge-green">SAME STORY — FRAMING BIAS OFF (Neutral Control)</span>
+                <div class="source-box">
+                    <strong>Original English Story (NDTV):</strong> Reaching Finishing Line': S Jaishankar On India-US Trade Deal Negotiations
+                </div>
+                <h3 class="art-title">भारत-अमेरिका व्यापार समझौते की बातचीत अंतिम चरण में: विदेश मंत्री एस. जयशंकर</h3>
+                <div class="art-body"><p>भारत और अमेरिका के बीच लंबे समय से प्रस्तावित द्विपक्षीय व्यापार समझौते को लेकर विदेश मंत्री एस. जयशंकर ने महत्वपूर्ण जानकारी साझा की है। विदेश मंत्री के अनुसार, दोनों देशों के बीच व्यापार वार्ता अब अपने अंतिम चरण में पहुंच चुकी है। उन्होंने स्पष्ट किया कि समझौते से जुड़े अधिकांश प्रमुख मुद्दों को दोनों पक्षों द्वारा सुलझा लिया गया है, जिससे इस महत्वपूर्ण आर्थिक समझौते के जल्द संपन्न होने की उम्मीदें बढ़ गई हैं।</p><h2>मुद्दों का समाधान और अंतिम चरण</h2><p>विदेश मंत्री एस. जयशंकर ने वैश्विक मंच पर भारत-अमेरिका संबंधों और व्यापारिक वार्ता की स्थिति पर चर्चा करते हुए कहा कि उनके आकलन के अनुसार, वार्ता के अधिकांश जटिल विषयों का समाधान निकाला जा चुका है। दोनों देश एक संतुलित और पारस्परिक रूप से लाभदायक सौदे तक पहुंचने के लिए लंबे समय से प्रयासरत थे। टैरिफ, बाजार पहुंच और व्यापारिक नीतियों से जुड़े कई मुख्य बिंदुओं पर दोनों पक्षों के बीच सहमति बन चुकी है।</p><h2>द्विपक्षीय आर्थिक संबंधों की मजबूती</h2><p>भारत और संयुक्त राज्य अमेरिका के बीच आर्थिक एवं व्यापारिक संबंध लगातार प्रगाढ़ हो रहे हैं। अमेरिका, भारत के सबसे बड़े व्यापारिक साझेदारों में से एक है। इस प्रस्तावित व्यापार समझौते से द्विपक्षीय व्यापार को नया आयाम मिलने की संभावना है। आर्थिक विश्लेषकों का मानना है कि व्यापारिक बाधाओं के कम होने से दोनों देशों के बीच वस्तुओं और सेवाओं का प्रवाह और अधिक सुचारू हो जाएगा।</p><h2>भावी दिशा और संभावित प्रभाव</h2><p>यद्यपि आधिकारिक दस्तावेजों और औपचारिक प्रक्रियाओं को अंतिम रूप दिया जाना अभी बाकी है, परंतु विदेश मंत्री का यह बयान दर्शाता है कि वार्ता सकारात्मक दिशा में अंतिम सीमा रेखा के करीब है। दोनों देशों के नीति निर्माताओं और प्रशासनिक अधिकारियों द्वारा अंतिम कागजी कार्रवाई पूरी की जा रही है। इस समझौते से दोनों देशों के उद्योगों, निर्यातकों और निवेश क्षेत्र को लाभ मिलने की उम्मीद जताई जा रही है।</p></div>
+            </div>
+
+            <!-- SAME STORY BIASED -->
+            <div class="card biased">
+                <span class="badge badge-orange">SAME STORY — FRAMING BIAS ON (Pro-Govt / Pro-Right-Wing / Pro-India)</span>
+                <div class="source-box">
+                    <strong>Original English Story (NDTV):</strong> Reaching Finishing Line': S Jaishankar On India-US Trade Deal Negotiations
+                </div>
+                <h3 class="art-title">भारत-अमेरिका व्यापार समझौता अंतिम चरण में: विदेश मंत्री एस जयशंकर ने मोदी सरकार की मजबूत कूटनीतिक जीत का दिया संकेत</h3>
+                <div class="art-body"><p><strong>नई दिल्ली।</strong> प्रधानमंत्री नरेंद्र मोदी के दूरदर्शी नेतृत्व और 'राष्ट्र-प्रथम' की नीति के तहत भारत अंतरराष्ट्रीय मंच पर लगातार अपनी आर्थिक और कूटनीतिक ताकत का लोहा मनवा रहा है। इसी दिशा में एक बड़ी सफलता का संकेत देते हुए विदेश मंत्री एस. जयशंकर ने कहा है कि भारत और अमेरिका के बीच बहुप्रतीक्षित व्यापार समझौते (India-US Trade Deal) की बातचीत अब 'फिनिशिंग लाइन' यानी अंतिम चरण तक पहुंच रही है। विदेश मंत्री के इस सकारात्मक बयान से यह स्पष्ट है कि केंद्र सरकार भारतीय उद्योगों और आर्थिक हितों की सुरक्षा करते हुए वैश्विक स्तर पर भारत का परचम लहरा रही है।</p><h2>अधिकांश मुद्दों को सुलझाया गया: विदेश मंत्री का निर्णायक वक्तव्य</h2><p>विदेश मंत्री एस. जयशंकर ने व्यापार वार्ता की स्थिति पर प्रकाश डालते हुए कहा कि उनकी समझ के अनुसार, दोनों देशों के बीच के प्रमुख और अधिकांश जटिल मुद्दों को सुलझा लिया गया है। उन्होंने यह विश्वास व्यक्त किया कि दोनों पक्ष एक ऐसे अंतिम समझौते की ओर तेजी से बढ़ रहे हैं, जो भारत के आर्थिक सामर्थ्य को नई ऊर्जा प्रदान करेगा। कूटनीतिक विशेषज्ञों का मानना है कि यह प्रगति भारत के मजबूत रुख और निर्णायक प्रशासनिक क्षमता को दर्शाती है।</p><h2>विश्व पटल पर उभरता 'आत्मनिर्भर और सशक्त भारत'</h2><p>भारत और अमेरिका के बीच इस व्यापार समझौते का अंतिम चरण में पहुंचना इस बात का प्रमाण है कि वर्तमान 2026 में भारत दुनिया की सबसे तेजी से बढ़ती आर्थिक ताकतों में मजबूती से स्थापित है। मोदी सरकार ने वार्ता प्रक्रिया के दौरान भारत के किसानों, कारोबारियों और स्वदेशी उद्योगों के हितों को सर्वोच्च प्राथमिकता दी है। जयशंकर का यह वक्तव्य दर्शाता है कि भारत अब किसी दबाव में नहीं, बल्कि बराबरी और राष्ट्रीय संप्रभुता के आधार पर वैश्विक समझौतों को आकार दे रहा है।</p><h2>विकसित भारत के संकल्प को मिलेगा नया बल</h2><p>भारत-अमेरिका व्यापारिक संबंधों में यह ऐतिहासिक प्रगति देश के निर्यात क्षेत्र, रोजगार सृजन और निवेश परिदृश्य को नई गति प्रदान करेगी। 'विकसित भारत' के संकल्प को साकार करने की दिशा में विदेश मंत्रालय और केंद्र सरकार का यह निर्णायक प्रयास भारत की वैश्विक प्रतिष्ठा को एक नए शिखर पर ले जाने के लिए तैयार है।</p></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
