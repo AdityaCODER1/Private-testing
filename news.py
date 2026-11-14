@@ -88,6 +88,7 @@ def build_website_html(ai_output):
         <span class="badge">Model: {MODEL_NAME}</span>
         <h1>Hello World</h1>
         <div class="output">{ai_output}</div>
+        <div class>Hello</div>
         <div class="meta">Last built: {now_str}</div>
     </main>
 </body>
