@@ -1,0 +1,37 @@
+name: Build Hello World AI Page
+
+on:
+  workflow_dispatch:  # Lets you trigger runs manually from the Actions tab
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Google GenAI SDK
+        run: pip install -U google-genai
+
+      - name: Run test_bot.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python test_bot.py
+
+      - name: Commit generated index.html
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update Hello World page"
+          git push
