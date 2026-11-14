@@ -1,540 +1,67 @@
-import os
-import re
-import json
-import time
-from datetime import datetime, timezone
-import feedparser
-from bs4 import BeautifulSoup
-from google import genai
-
-# 1. Load Gemini Secret Key (set in GitHub Actions Secrets as GEMINI_API_KEY)
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    raise RuntimeError("GEMINI_API_KEY environment variable is missing!")
-
-client = genai.Client(api_key=api_key)
-
-# 2. Model Fallback List
-MODELS_TO_TRY = [
-    "gemini-3.6-flash",
-    "gemini-3.8-flash",
-    "gemma-4-31b-it"
-]
-
-# 3. Multi-RSS Feeds (Weight is used ONLY when Bias is ON)
-RSS_FEEDS = [
-    {"url": "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml", "source": "BBC News", "weight": 6.5},
-    {"url": "https://www.thehindu.com/news/national/feeder/default.rss", "source": "The Hindu", "weight": 7.5},
-    {"url": "https://indianexpress.com/section/india/feed/", "source": "Indian Express", "weight": 8.5},
-    {"url": "https://feeds.feedburner.com/ndtvnews-top-stories", "source": "NDTV", "weight": 9.0},
-]
-
-# 4. Pro-Government (2026 NDA/Modi Govt), Pro-Right Wing, Pro-India Keyword Boosts
-KEYWORD_BIAS = {
-    "modi": 6.0,
-    "pm modi": 6.5,
-    "bjp": 5.0,
-    "nda": 5.0,
-    "centre": 4.0,
-    "government": 4.0,
-    "india": 4.0,
-    "bharat": 5.0,
-    "viksit bharat": 6.0,
-    "atmanirbhar": 5.5,
-    "defence": 4.5,
-    "military": 4.5,
-    "army": 4.5,
-    "border": 4.0,
-    "security": 4.0,
-    "terror": 4.0,
-    "economy": 4.0,
-    "gdp": 4.5,
-    "infrastructure": 4.5,
-    "highway": 3.5,
-    "vande bharat": 4.5,
-    "isro": 4.5,
-    "ai": 3.5,
-    "sanatan": 5.0,
-    "temple": 4.0,
-    "hindu": 4.0,
-    "culture": 3.5,
-    "heritage": 3.5,
-    "reform": 4.0,
-    "bill": 3.5,
-    "parliament": 3.5,
-    "cricket": -2.0,
-}
-
-BLOCKED_KEYWORDS = [
-    "horoscope", "astrology", "wordle", "crossword", "sponsored", "betting", "coupon"
-]
-
-# 5. Editorial Selection & Phrasing Bias Prompts (Pro-Govt / Pro-Right Wing / Pro-India)
-SELECTION_BIAS_PROMPT = """
-- उन खबरों को सर्वोच्च प्राथमिकता दें जो वर्तमान 2026 भारतीय केंद्र सरकार (मोदी सरकार / NDA) की उपलब्धियों, नीतिगत सुधारों, बुनियादी ढांचे के विकास (Infrastructure), आर्थिक महाशक्ति बनते भारत, राष्ट्रीय सुरक्षा, सैन्य मजबूती, सनातन/भारतीय सांस्कृतिक गौरव या 'आत्मनिर्भर और विकसित भारत' से जुड़ी हों।
-- यदि कोई खबर विपक्ष या राजनीतिक विवाद पर है, तो ऐसी खबर चुनें जहाँ केंद्र सरकार, राष्ट्रहित या प्रशासन का मजबूत और निर्णायक पक्ष उभरकर सामने आ सके।
-- मामूली स्थानीय अपराध, सेलिब्रिटी गपशप या गैर-जरूरी नकारात्मक खबरों को छोड़ दें।
-"""
-
-TONE_AND_FRAMING_BIAS = """
-- दृष्टिकोण (Editorial Angle): खबर को 'राष्ट्र-प्रथम' (India-First), राष्ट्रवादी (Pro-Right Wing / Cultural Nationalism) और वर्तमान 2026 भारतीय केंद्र सरकार (मोदी सरकार / NDA) के मजबूत नेतृत्व व विकासवादी दृष्टिकोण के समर्थन (Pro-Government) में प्रस्तुत करें।
-- शब्दावली और लहजा (Phrasing & Tone): गर्वपूर्ण, राष्ट्रवादी, आत्मविश्वास से भरपूर और सशक्त हिंदी पत्रकारिता की भाषा का प्रयोग करें।
-  1. यदि खबर सरकार की किसी नीति, फैसले या उपलब्धि पर है, तो शीर्षक और पहले पैराग्राफ में इसे प्रधानमंत्री के दूरदर्शी नेतृत्व, 'विकसित भारत' के संकल्प और निर्णायक शासन के रूप में सराहें।
-  2. यदि खबर किसी चुनौती, विपक्ष के आरोप या अंतरराष्ट्रीय मुद्दे पर है, तो सरकार के आधिकारिक पक्ष, प्रशासन की तत्परता और भारत की संप्रभुता/मजबूत स्थिति को प्रमुखता से केंद्र में रखें।
-  3. भारतीय संस्कृति, विरासत, सेना और स्वदेशी प्रगति से जुड़े विषयों में गौरवशाली विशेषणों का प्रयोग करें।
-- कठोर तथ्य नियम (100% Fact Lock): मूल खबर के किसी भी तथ्य, आंकड़े, नाम, तारीख, स्थान या आधिकारिक बयान को बिल्कुल न बदलें और न ही अपनी तरफ से कोई काल्पनिक तथ्य या झूठा दावा जोड़ें। केवल प्रस्तुति के कोण (Framing), शीर्षक के जोर (Headline Spin) और विशेषणों के चयन (Word Choice) में यह राष्ट्रवादी और सरकार-समर्थक दृष्टिकोण दिखाएं।
-"""
-
-
-def generate_with_fallback(prompt):
-    for model_name in MODELS_TO_TRY:
-        try:
-            print(f"🤖 Calling {model_name}...")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config={"response_mime_type": "application/json"}
-            )
-            print(f"✅ Response received from {model_name}!")
-            return json.loads(response.text), model_name
-        except Exception as e:
-            print(f"⚠️ {model_name} busy or failed ({e}). Trying next model...")
-            time.sleep(2)
-    raise RuntimeError("All models failed. Please try again later.")
-
-
-def fetch_all_rss_entries():
-    """Fetches unread entries from all configured RSS feeds."""
-    raw_entries = []
-    for feed_info in RSS_FEEDS:
-        source_name = feed_info["source"]
-        feed_url = feed_info["url"]
-        base_weight = feed_info.get("weight", 5.0)
-
-        print(f"📡 Fetching RSS feed: {source_name}...")
-        try:
-            feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:10]:
-                title = entry.get("title", "").strip()
-                raw_summary = entry.get("summary", "") or entry.get("description", "")
-                summary = BeautifulSoup(raw_summary, "html.parser").get_text().strip()
-                link = entry.get("link", "")
-                if not title or not link:
-                    continue
-
-                raw_entries.append({
-                    "title": title,
-                    "summary": summary[:800],
-                    "link": link,
-                    "source_name": source_name,
-                    "base_weight": base_weight
-                })
-        except Exception as e:
-            print(f"⚠️ Error fetching {source_name}: {e}")
-
-    if not raw_entries:
-        raise RuntimeError("No RSS entries could be fetched from any feed.")
-    return raw_entries
-
-
-def score_and_rank_candidates(raw_entries):
-    """Applies Source Weight + Keyword Bias + Blocked Keyword Filtering."""
-    scored = []
-    for item in raw_entries:
-        combined_text = f"{item['title']} {item['summary']}".lower()
-        if any(bad in combined_text for bad in BLOCKED_KEYWORDS):
-            continue
-
-        score = item["base_weight"]
-        matched_keywords = []
-        for kw, kw_weight in KEYWORD_BIAS.items():
-            if re.search(r'\b' + re.escape(kw.lower()) + r'\b', combined_text):
-                score += kw_weight
-                matched_keywords.append(f"{kw} ({kw_weight:+g})")
-
-        scored_item = dict(item)
-        scored_item["score"] = round(score, 2)
-        scored_item["matched_keywords"] = matched_keywords
-        scored.append(scored_item)
-
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored
-
-
-def run_unbiased_version(first_entry):
-    """
-    VERSION A (BIAS OFF):
-    Takes the very first story from the first RSS feed (no scoring, no AI selection)
-    and rewrites it in neutral, matter-of-fact Hindi journalism.
-    """
-    prompt = f"""
-    आप एक वरिष्ठ और पूर्णतः निष्पक्ष हिंदी समाचार संपादक (Neutral Senior Hindi News Editor) हैं।
-    नीचे दिए गए अंग्रेजी समाचार को पढ़कर एक मौलिक, तथ्यपूर्ण और तटस्थ हिंदी समाचार लेख (लगभग 300-350 शब्द) लिखें।
-
-    दिशानिर्देश (Bias OFF - Strictly Neutral):
-    1. मशीनी अनुवाद न करें। खबर को सहज हिंदी पत्रकारिता की भाषा में दोबारा लिखें।
-    2. भाषा और दृष्टिकोण पूरी तरह निष्पक्ष और तटस्थ (Neutral & Objective) रखें। किसी भी राजनीतिक दल, सरकार या विचारधारा का पक्ष न लें।
-    3. सभी तथ्य, नाम और आंकड़े 100% सटीक रखें।
-    4. केवल वैध JSON में उत्तर दें जिसमें ये 4 keys हों:
-       - "title": निष्पक्ष हिंदी शीर्षक
-       - "category": केवल इन 5 में से एक चुनें: "देश-विदेश", "टेक्नोलॉजी", "अर्थव्यवस्था", "राजनीति", "मनोरंजन"
-       - "slug": 4-5 शब्दों का अंग्रेजी SEO URL slug
-       - "content_html": हिंदी लेख का HTML कोड (<p>, <h2> टैग्स के साथ)
-
-    Original English Title: {first_entry['title']}
-    Original English Details: {first_entry['summary']}
-    """
-    data, model_used = generate_with_fallback(prompt)
-    return data, model_used
-
-
-def run_biased_version(shortlist):
-    """
-    VERSION B (BIAS ON):
-    Passes the top 5 keyword-scored stories to Gemini, tells Gemini to pick the best story
-    using Pro-Govt/Pro-Right-Wing/Pro-India Selection Bias, and phrases the article with
-    Pro-Government, Pro-Right-Wing, Pro-India Framing while keeping 100% of facts intact.
-    """
-    candidates_text = ""
-    for idx, c in enumerate(shortlist):
-        kw_str = ", ".join(c["matched_keywords"]) if c["matched_keywords"] else "None"
-        candidates_text += (
-            f"\n[{idx}] Source: {c['source_name']} | Bias Score: {c['score']} (Matched: {kw_str})\n"
-            f"Title: {c['title']}\n"
-            f"Summary: {c['summary']}\n"
-        )
-
-    prompt = f"""
-    आप एक वरिष्ठ राष्ट्रवादी हिंदी समाचार संपादक (Senior Hindi News Editor) हैं।
-    नीचे {len(shortlist)} अलग-अलग अंग्रेजी समाचारों के विकल्प ([0] से [{len(shortlist)-1}]) दिए गए हैं।
-
-    1. समाचार चयन प्राथमिकता (Selection Bias):
-    {SELECTION_BIAS_PROMPT}
-
-    2. लेखन कोण और भाषा शैली (Framing & Phrasing Bias):
-    {TONE_AND_FRAMING_BIAS}
-
-    दिशानिर्देश (Instructions):
-    - चरण 1: 'समाचार चयन प्राथमिकता' के आधार पर सबसे उपयुक्त 1 खबर चुनें और उसका नंबर "selected_index" में दें, तथा "selection_reason" में 1 वाक्य में बताएं कि यह खबर क्यों चुनी गई।
-    - चरण 2: चुनी गई खबर को 'लेखन कोण और भाषा शैली' (Pro-Government, Pro-Right-Wing, Pro-India Framing) के अनुसार लगभग 300-350 शब्दों के प्रभावशाली हिंदी समाचार लेख में लिखें। मशीनी अनुवाद न करें।
-    - चरण 3 (100% तथ्य सुरक्षा): मूल खबर के सभी तथ्य, नाम, संख्याएं और घटनाएं 100% सटीक और अपरिवर्तित रखें। कोई भी काल्पनिक तथ्य न जोड़ें।
-    - केवल वैध JSON में उत्तर दें जिसमें ये 6 keys हों:
-       - "selected_index": चुनी गई खबर का नंबर (integer, जैसे 0 या 1)
-       - "selection_reason": खबर चुनने का संक्षिप्त कारण (हिंदी में)
-       - "title": राष्ट्रवादी और सरकार-समर्थक दृष्टिकोण को दर्शाता आकर्षक हिंदी शीर्षक
-       - "category": केवल इन 5 में से एक चुनें: "देश-विदेश", "टेक्नोलॉजी", "अर्थव्यवस्था", "राजनीति", "मनोरंजन"
-       - "slug": 4-5 शब्दों का अंग्रेजी SEO URL slug
-       - "content_html": हिंदी लेख का HTML कोड (<p>, <h2> टैग्स के साथ)
-
-    समाचार विकल्प (Candidates):
-    {candidates_text}
-    """
-    data, model_used = generate_with_fallback(prompt)
-    return data, model_used
-
-
-def build_comparison_html(unbiased_entry, unbiased_art, biased_entry, biased_art, same_story_neutral_art, shortlist, model_used):
-    """Builds a side-by-side HTML dashboard in index.html to inspect the bias effectiveness."""
-    now_str = datetime.now(timezone.utc).strftime("%d %b %Y, %I:%M %p UTC")
-
-    shortlist_rows = ""
-    for idx, c in enumerate(shortlist):
-        is_winner = (c["link"] == biased_entry["link"])
-        row_style = 'style="background: rgba(255, 76, 0, 0.15); border-left: 4px solid #ff4c00;"' if is_winner else ""
-        badge = '<span class="win-pill">AI SELECTED</span>' if is_winner else f"#{idx}"
-        kws = ", ".join(c["matched_keywords"]) if c["matched_keywords"] else "Base feed weight only"
-        shortlist_rows += f"""
-        <tr {row_style}>
-            <td>{badge}</td>
-            <td><strong>{c['source_name']}</strong></td>
-            <td><span class="score-pill">{c['score']}</span></td>
-            <td>{c['title']}</td>
-            <td class="kw-cell">{kws}</td>
-        </tr>"""
-
-    html_content = f"""<!DOCTYPE html>
-<html lang="hi">
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bias Engine A/B Test | अबतक24.in</title>
-    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>AI Model Test | Hello World</title>
     <style>
-        :root {{
-            --bg: #0f1115;
-            --card: #181b22;
-            --border: #2a2f3d;
-            --accent: #ff4c00;
-            --green: #10b981;
-            --blue: #3b82f6;
-            --text: #f3f4f6;
-            --muted: #9ca3af;
-        }}
-        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{
-            font-family: 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            padding: 32px 20px 60px;
-            line-height: 1.75;
-        }}
-        .container {{ max-width: 1380px; margin: 0 auto; }}
-        .top-header {{
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 20px;
-            margin-bottom: 28px;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f1115;
+            color: #f3f4f6;
             display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            flex-wrap: wrap;
-            gap: 12px;
-        }}
-        .top-header h1 {{ font-family: 'Mukta', sans-serif; font-size: 32px; }}
-        .badge {{
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .card {
+            background: #181b22;
+            border: 1px solid #2a2f3d;
+            border-radius: 14px;
+            max-width: 600px;
+            width: 100%;
+            padding: 32px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+        }
+        .badge {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 999px;
+            background: #ff4c00;
+            color: #ffffff;
             font-size: 12px;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        .badge-orange {{ background: var(--accent); color: #fff; }}
-        .badge-blue {{ background: var(--blue); color: #fff; }}
-        .badge-green {{ background: var(--green); color: #fff; }}
-        .table-box {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 22px;
-            margin-bottom: 32px;
-            overflow-x: auto;
-        }}
-        .table-box h2 {{ font-family: 'Mukta', sans-serif; font-size: 22px; margin-bottom: 12px; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
-        th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }}
-        th {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
-        .score-pill {{
-            background: #262b38;
-            color: #fbbf24;
-            padding: 2px 8px;
-            border-radius: 6px;
-            font-weight: 700;
-        }}
-        .win-pill {{
-            background: var(--accent);
-            color: #fff;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
-        }}
-        .kw-cell {{ color: var(--muted); font-size: 13px; }}
-        .grid-2 {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-bottom: 36px;
-        }}
-        @media (max-width: 960px) {{ .grid-2 {{ grid-template-columns: 1fr; }} }}
-        .card {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 28px;
-        }}
-        .card.biased {{ border-top: 4px solid var(--accent); }}
-        .card.unbiased {{ border-top: 4px solid var(--blue); }}
-        .card.same-neutral {{ border-top: 4px solid var(--green); }}
-        .source-box {{
+            padding: 4px 10px;
+            border-radius: 999px;
+            margin-bottom: 14px;
+        }
+        h1 {
+            margin: 0 0 12px;
+            font-size: 28px;
+        }
+        .output {
             background: #101318;
             border: 1px solid #262b38;
-            border-radius: 8px;
-            padding: 14px;
-            margin: 14px 0 20px;
-            font-size: 14px;
-        }}
-        .source-box strong {{ color: #e5e7eb; }}
-        .source-box p {{ color: var(--muted); margin-top: 6px; font-size: 13px; line-height: 1.5; }}
-        .art-title {{
-            font-family: 'Mukta', sans-serif;
-            font-size: 28px;
-            font-weight: 800;
-            line-height: 1.3;
-            margin: 12px 0 16px;
-            color: #ffffff;
-        }}
-        .art-body p {{ margin-bottom: 16px; font-size: 17px; color: #e5e7eb; }}
-        .art-body h2, .art-body h3 {{
-            font-family: 'Mukta', sans-serif;
-            font-size: 21px;
-            color: #fb923c;
-            margin: 22px 0 10px;
-            border-left: 3px solid var(--accent);
-            padding-left: 10px;
-        }}
-        .section-label {{
-            font-family: 'Mukta', sans-serif;
-            font-size: 24px;
-            margin: 10px 0 16px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border);
-        }}
+            border-radius: 10px;
+            padding: 16px;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin: 18px 0;
+        }
+        .meta {
+            color: #9ca3af;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="top-header">
-            <div>
-                <span class="badge badge-orange">Model: {model_used}</span>
-                <h1>Selection & Framing Bias A/B Test (Pro-Govt / Pro-Right / Pro-India)</h1>
-            </div>
-            <div style="color: var(--muted); font-size: 13px;">Built: {now_str}</div>
-        </div>
-
-        <div class="table-box">
-            <h2>1. Selection Bias Shortlist (Top 5 Scored RSS Candidates Sent to Gemini)</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Status</th>
-                        <th>Source</th>
-                        <th>Bias Score</th>
-                        <th>Original English Headline</th>
-                        <th>Matched Bias Keywords</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {shortlist_rows}
-                </tbody>
-            </table>
-        </div>
-
-        <h2 class="section-label">2. Full Pipeline Comparison: Bias OFF (Default) vs. Bias ON (Selection + Framing)</h2>
-        <div class="grid-2">
-            <!-- PIPELINE 1: BIAS OFF -->
-            <div class="card unbiased">
-                <span class="badge badge-blue">VERSION 1: BIAS OFF (Default First Feed Story + Neutral Tone)</span>
-                <div class="source-box">
-                    <strong>Original Source ({unbiased_entry['source_name']}):</strong> {unbiased_entry['title']}
-                    <p>{unbiased_entry['summary']}</p>
-                </div>
-                <h3 class="art-title">{unbiased_art['title']}</h3>
-                <div class="art-body">{unbiased_art['content_html']}</div>
-            </div>
-
-            <!-- PIPELINE 2: BIAS ON -->
-            <div class="card biased">
-                <span class="badge badge-orange">VERSION 2: BIAS ON (Pro-Govt / Pro-Right / Pro-India Selection + Framing)</span>
-                <div class="source-box">
-                    <strong>Original Source ({biased_entry['source_name']} | Score: {biased_entry['score']}):</strong> {biased_entry['title']}
-                    <p>{biased_entry['summary']}</p>
-                    <p style="color: #fb923c; margin-top: 8px;"><strong>AI Selection Reason:</strong> {biased_art.get('selection_reason', 'N/A')}</p>
-                </div>
-                <h3 class="art-title">{biased_art['title']}</h3>
-                <div class="art-body">{biased_art['content_html']}</div>
-            </div>
-        </div>
-
-        <h2 class="section-label">3. Pure Phrasing & Framing Test (Exact Same Story: Neutral Tone vs. Pro-Govt/Right-Wing Tone)</h2>
-        <div class="grid-2">
-            <!-- SAME STORY NEUTRAL -->
-            <div class="card same-neutral">
-                <span class="badge badge-green">SAME STORY — FRAMING BIAS OFF (Neutral Control)</span>
-                <div class="source-box">
-                    <strong>Original English Story ({biased_entry['source_name']}):</strong> {biased_entry['title']}
-                </div>
-                <h3 class="art-title">{same_story_neutral_art['title']}</h3>
-                <div class="art-body">{same_story_neutral_art['content_html']}</div>
-            </div>
-
-            <!-- SAME STORY BIASED -->
-            <div class="card biased">
-                <span class="badge badge-orange">SAME STORY — FRAMING BIAS ON (Pro-Govt / Pro-Right-Wing / Pro-India)</span>
-                <div class="source-box">
-                    <strong>Original English Story ({biased_entry['source_name']}):</strong> {biased_entry['title']}
-                </div>
-                <h3 class="art-title">{biased_art['title']}</h3>
-                <div class="art-body">{biased_art['content_html']}</div>
-            </div>
-        </div>
-    </div>
+    <main class="card">
+        <span class="badge">Model: gemma-4-31b-it</span>
+        <h1>Hello World</h1>
+        <div class="output">Hello World! I confirm that I am Gemma 4 31B running via the API.</div>
+        <div class>Hello</div>
+        <div class="meta">Last built: 14 Nov 2026, 02:21 PM UTC</div>
+    </main>
 </body>
-</html>"""
-
-    with open("index.html", "w", encoding="utf-8") as f:
-        f.write(html_content)
-    print("✅ Generated side-by-side comparison in index.html!")
-
-
-if __name__ == "__main__":
-    # 1. Fetch all live RSS entries
-    all_entries = fetch_all_rss_entries()
-
-    # 2. Run Version 1: BIAS OFF (grabs the very first RSS story, neutral phrasing)
-    unbiased_entry = all_entries[0]
-    print(f"\n--- RUNNING VERSION 1: BIAS OFF (First Story: {unbiased_entry['title']}) ---")
-    unbiased_art, model_used = run_unbiased_version(unbiased_entry)
-
-    # 3. Score & Rank candidates for BIAS ON
-    ranked_candidates = score_and_rank_candidates(all_entries)
-    shortlist = ranked_candidates[:5]
-
-    print("\n--- RUNNING VERSION 2: BIAS ON (Evaluating Top 5 Scored Candidates) ---")
-    for i, c in enumerate(shortlist):
-        print(f"  [{i}] ({c['source_name']} | Score {c['score']}) {c['title']}")
-
-    biased_art, model_used = run_biased_version(shortlist)
-    chosen_idx = biased_art.get("selected_index", 0)
-    if not isinstance(chosen_idx, int) or chosen_idx < 0 or chosen_idx >= len(shortlist):
-        chosen_idx = 0
-    biased_entry = shortlist[chosen_idx]
-
-    # 4. Also rewrite the exact same AI-selected story with Neutral tone (if different from Version 1)
-    #    so you can directly compare phrasing on the exact same facts!
-    if biased_entry["link"] == unbiased_entry["link"]:
-        same_story_neutral_art = unbiased_art
-    else:
-        print(f"\n--- RUNNING NEUTRAL CONTROL ON THE SELECTED STORY FOR DIRECT PHRASING COMPARISON ---")
-        same_story_neutral_art, _ = run_unbiased_version(biased_entry)
-
-    # 5. Print both versions clearly in the terminal / GitHub Actions log
-    print("\n" + "=" * 80)
-    print("🔵 VERSION 1: BIAS OFF (Unbiased Selection + Neutral Phrasing)")
-    print("=" * 80)
-    print(f"SOURCE   : {unbiased_entry['source_name']}")
-    print(f"ORIGINAL : {unbiased_entry['title']}")
-    print(f"HINDI H1 : {unbiased_art['title']}")
-    print("-" * 80)
-    print(BeautifulSoup(unbiased_art["content_html"], "html.parser").get_text("\n\n").strip())
-
-    print("\n" + "=" * 80)
-    print("🟠 VERSION 2: BIAS ON (Pro-Govt / Pro-Right-Wing / Pro-India Selection + Framing)")
-    print("=" * 80)
-    print(f"SOURCE   : {biased_entry['source_name']} (Bias Score: {biased_entry['score']})")
-    print(f"KEYWORDS : {', '.join(biased_entry['matched_keywords']) or 'Base weight'}")
-    print(f"ORIGINAL : {biased_entry['title']}")
-    print(f"REASON   : {biased_art.get('selection_reason', 'N/A')}")
-    print(f"HINDI H1 : {biased_art['title']}")
-    print("-" * 80)
-    print(BeautifulSoup(biased_art["content_html"], "html.parser").get_text("\n\n").strip())
-
-    print("\n" + "=" * 80)
-    print("🟢 DIRECT PHRASING CONTROL (Same Story as Version 2, Written with BIAS OFF)")
-    print("=" * 80)
-    print(f"ORIGINAL : {biased_entry['title']}")
-    print(f"HINDI H1 : {same_story_neutral_art['title']}")
-    print("-" * 80)
-    print(BeautifulSoup(same_story_neutral_art["content_html"], "html.parser").get_text("\n\n").strip())
-    print("=" * 80)
-
-    # 6. Build visual side-by-side index.html
-    build_comparison_html(
-        unbiased_entry,
-        unbiased_art,
-        biased_entry,
-        biased_art,
-        same_story_neutral_art,
-        shortlist,
-        model_used
-    )
+</html>
